@@ -3,6 +3,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("GiveawayBot")
 log.setLevel(logging.DEBUG)
+logging.getLogger("discord").setLevel(logging.CRITICAL)
 
 try:
     import uvloop

@@ -27,6 +27,10 @@ class Giveaways(commands.Cog):
         else:
             return None
 
+    async def setup_hook(self):
+        self.log.info("Starting the check giveaways loop")
+        self.check_giveaways.start()
+
     @commands.group()
     async def giveaway(self, ctx: commands.Context) -> None:
         """Giveaway commands."""
@@ -108,6 +112,7 @@ class Giveaways(commands.Cog):
     @tasks.loop(seconds=5)
     async def check_giveaways(self) -> None:
         """Check giveaways."""
+        await self.bot.wait_until_ready()
         now = datetime.datetime.now()
         giveaways = await self.db.fetch(
             f"SELECT * FROM giveaways WHERE ended_at < {now.timestamp()}"
