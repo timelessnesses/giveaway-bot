@@ -1,6 +1,6 @@
+DROP TABLE IF EXISTS giveaways;
 CREATE TABLE IF NOT EXISTS giveaways(
     id SERIAL,
-    owner_id BIGINT NOT NULL,
     guild_id BIGINT NOT NULL,
     channel_id BIGINT NOT NULL,
     message_id BIGINT NOT NULL,
@@ -11,5 +11,6 @@ CREATE TABLE IF NOT EXISTS giveaways(
     ended_at BIGINT NOT NULL,
     winner_id BIGINT,
     conditions TEXT NOT NULL,
+    prize TEXT NOT NULL,
     PRIMARY KEY (id)
 )

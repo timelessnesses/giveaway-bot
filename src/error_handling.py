@@ -49,7 +49,7 @@ class Errors(commands.Cog):
             await ctx.send(
                 embed=discord.Embed(
                     title="Bad argument",
-                    description=f"{error.param.name} is not a valid {error.param.type}.",
+                    description=f"{error.param.name} is not a valid {error.param.type}.\n```{str(error)}```",
                     color=discord.Color.red(),
                 )
             )
