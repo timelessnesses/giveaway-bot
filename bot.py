@@ -20,6 +20,8 @@ import asyncpg
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 load_dotenv()
 import os
@@ -29,6 +31,23 @@ from sql.easy_sql import EasySQL
 bot = commands.Bot(command_prefix="g!", intents=discord.Intents.all())
 bot.db = None
 bot.remove_command("help")
+observer = Observer()
+
+
+class FileHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        log.info(f"File changed: {event.src_path}")
+        if event.src_path.endswith(".py"):
+            log.info("Reloading...")
+            path = event.src_path.replace("\\", "/").replace("/", ".")[:-3]
+            try:
+                run(bot.reload_extension(path))
+                log.info(f"Reloaded {path}")
+            except Exception as e:
+                log.error(f"Failed to reload {path}")
+
+
+observer.schedule(FileHandler(), path="src", recursive=True)
 
 
 @bot.event
@@ -37,25 +56,28 @@ async def on_ready():
 
 
 async def main():
-    try:
-        async with bot:
-            for cog in os.listdir("src"):
-                if cog.endswith(".py"):
-                    await bot.load_extension(f"src.{cog[:-3]}")
-            await bot.load_extension("jishaku")
-            bot.db = await EasySQL().connect(
-                host=os.environ.get("DB_HOST"),
-                database="giveaways",
-                user="giveaway_bot",
-                password=os.environ["DB_PASS"],
-            )
-            log.info("Connected to database")
-            await bot.db.execute(open("sql/postgres_starter.sql", "r").read())
-            await bot.start(os.environ["DISCORD_TOKEN"])
-    except KeyboardInterrupt:
-        log.fatal("KeyboardInterrupt recieved exitting")
-        await bot.db.close()
+    async with bot:
+        bot.db = await EasySQL().connect(
+            host=os.environ.get("DB_HOST"),
+            database="giveaways",
+            user="giveaway_bot",
+            password=os.environ["DB_PASS"],
+        )
+        for cog in os.listdir("src"):
+            if cog.endswith(".py"):
+                await bot.load_extension(f"src.{cog[:-3]}")
+        await bot.load_extension("jishaku")
+        log.info("Connected to database")
+        await bot.db.execute(open("sql/postgres_starter.sql", "r").read())
+        log.info("Loaded starter SQL")
+        observer.start()
+        await bot.start(os.environ["DISCORD_TOKEN"])
 
 
 if __name__ == "__main__":
-    run(main())
+    try:
+        run(main())
+    except KeyboardInterrupt:
+        log.info("Exiting...")
+        run(bot.db.close())
+        observer.stop()

@@ -50,7 +50,7 @@ class Errors(commands.Cog):
             await ctx.send(
                 embed=discord.Embed(
                     title="Bad argument",
-                    description=f"{error.param.name} is not a valid {error.param.type}.\n```{str(error)}```",
+                    description=f"{error.param.name} is not a valid.\n```py\nBadArgument: {str(error)}\n```",
                     color=discord.Color.red(),
                 )
             )
@@ -74,11 +74,13 @@ class Errors(commands.Cog):
             )
 
         else:
-
+            exception = "".join(
+                traceback.format_exception(type(error), error, error.__traceback__)
+            )
             await ctx.send(
                 embed=discord.Embed(
                     title="An error occurred",
-                    description=f"```py\n{traceback.format_exc()}\n```",
+                    description=f"```py\n{exception}\n```",
                     color=discord.Color.red(),
                 )
             )

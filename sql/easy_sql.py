@@ -11,21 +11,20 @@ class EasySQL:
     async def connect(
         self, host, database, user, password
     ) -> typing.Optional[asyncpg.connection.Connection]:
-        self.db = await asyncpg.connect(
+        self.db = await asyncpg.create_pool(
             host=host, database=database, user=user, password=password
         )
-        self.cursor = self.db.cursor
         return self.db
 
-    async def execute(
-        self, query, *args
-    ) -> typing.Optional[asyncpg.connection.Connection]:
-        return await self.cursor.execute(query, *args)
+    async def execute(self, query, *args) -> typing.Optional[dict]:
+        async with self.db.acquire() as conn:
+            await conn.execute(query, *args)
+            return dict(conn)
 
-    async def fetch(
-        self, query, *args
-    ) -> typing.Optional[asyncpg.connection.Connection]:
-        return dict(await self.cursor.fetch(query, *args))
+    async def fetch(self, query, *args) -> typing.Optional[dict]:
+        async with self.db.acquire() as conn:
+            await conn.execute(query, *args)
+            return dict(conn)
 
     async def close(self) -> None:
         await self.cursor.close()
