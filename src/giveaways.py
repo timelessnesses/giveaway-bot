@@ -2,7 +2,7 @@ import datetime
 import logging
 import random
 import typing
-
+import os
 import discord
 from discord.ext import commands, tasks
 
@@ -101,6 +101,25 @@ class Giveaways(commands.Cog):
         condition: typing.Optional[str] = None,
     ) -> None:
         """Create a giveaway."""
+        setup_db = await EasySQL().connect(
+            host=os.environ.get("DB_HOST"),
+            database="setup",
+            user="giveaway_bot",
+            password=os.environ["DB_PASS"],
+        )
+        roles = ctx.author.roles
+        if (
+            not any(
+                r.id
+                == await setup_db.execute(
+                    f"SELECT * FROM setup WHERE guild_id = {ctx.guild.id}"
+                )["giveaway_role_id"]
+                for r in roles
+            )
+            or not ctx.author.guild_permissions.administrator
+        ):
+            raise commands.MissingPermissions(["NoGiveawayRoleError"])
+        await setup_db.close()
         time = self.parse_time(time)
         if time is None:
             badarg = commands.BadArgument(
@@ -243,6 +262,191 @@ class Giveaways(commands.Cog):
         await self.db.execute(
             f"UPDATE giveaways SET ended_at = {now.timestamp()}, winner_id = {winner.id}, time = {(now-datetime.timedelta(seconds=giveaway['time'])).total_seconds()} WHERE id = {giveaway['id']}"
         )
+
+    @giveaway.command()
+    async def list(
+        self, ctx: commands.Context, status: typing.Union["active", "ended"] = "active"
+    ) -> None:
+        """List giveaways."""
+        if status == "active":
+            giveaways = await self.db.fetch(
+                f"SELECT * FROM giveaways WHERE ended_at > {datetime.datetime.now().timestamp()}"
+            )
+        elif status == "ended":
+            giveaways = await self.db.fetch(
+                f"SELECT * FROM giveaways WHERE ended_at < {datetime.datetime.now().timestamp()}"
+            )
+        else:
+            badarg = commands.BadArgument(
+                f"Invalid status {status}. Only available options are active and ended."
+            )
+            badarg.param = dummy()
+            badarg.param.name = "status"
+            raise badarg
+        if not giveaways:
+            await ctx.send(
+                embed=discord.Embed(
+                    title="No giveaways. found with those status",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+        embed = discord.Embed(
+            title=f"{len(giveaways)} giveaways found with status {status}",
+            color=discord.Color.blurple(),
+        )
+        embeds = []
+        for giveaway in giveaways:
+            embed = discord.Embed(
+                title=giveaway["title"],
+                description=giveaway["description"],
+                color=discord.Color.blurple(),
+            )
+            embed.add_field(name="Prize", value=giveaway["prize"])
+            embed.add_field(name="ID", value=giveaway["id"])
+            embed.add_field(
+                name="Created by",
+                value=self.bot.get_user(giveaway["owner_id"]).mention,
+            )
+            embed.add_field(
+                name="Created at",
+                value=datetime.datetime.fromtimestamp(giveaway["started_at"]).strftime(
+                    "%d/%m/%Y %H:%M:%S"
+                ),
+            )
+            embed.add_field(
+                name="Ended at",
+                value=datetime.datetime.fromtimestamp(giveaway["ended_at"]).strftime(
+                    "%d/%m/%Y %H:%M:%S"
+                ),
+            )
+            embeds.append(embed)
+        await ctx.send(embed=embed)
+        if len(embeds) >= 10:  # discord limitation
+            for embed in embeds:
+                await ctx.send(embed=embed)
+                await asyncio.sleep(0.5)
+        else:
+            await ctx.send(embeds=embeds)
+
+    @giveaway.command()
+    async def info(self, ctx: commands.Context, giveaway_id: str) -> None:
+        """Get info about a giveaway."""
+        giveaway = await self.db.fetch(
+            f"SELECT * FROM giveaways WHERE id = '{giveaway_id}'"
+        )
+        if not giveaway:
+            raise commands.BadArgument(f"No giveaway with ID {giveaway_id}.")
+        giveaway = giveaway[0]
+        channel = self.bot.get_channel(giveaway["channel_id"])
+        if channel is None:
+            channel = dummy()
+            channel.mention = None
+        message = await channel.fetch_message(giveaway["message_id"])
+        if message is None:
+            message = dummy()
+            message.jump_url = None
+        embed = discord.Embed(
+            title=giveaway["title"],
+            description=giveaway["description"],
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(name="Prize", value=giveaway["prize"])
+        embed.add_field(name="ID", value=giveaway["id"])
+        embed.add_field(
+            name="Created by",
+            value=self.bot.get_user(giveaway["owner_id"]).mention,
+        )
+        embed.add_field(
+            name="Created at",
+            value=datetime.datetime.fromtimestamp(giveaway["started_at"]).strftime(
+                "%d/%m/%Y %H:%M:%S"
+            ),
+        )
+        embed.add_field(
+            name="Ended at",
+            value=datetime.datetime.fromtimestamp(giveaway["ended_at"]).strftime(
+                "%d/%m/%Y %H:%M:%S"
+            ),
+        )
+        embed.add_field(
+            name="Winner", value=self.bot.get_user(giveaway["winner_id"]).mention
+        )
+        embed.add_field(name="Channel", value=channel.mention)
+        embed.add_field(name="Message", value=message.jump_url)
+        await ctx.send(embed=embed)
+
+    @giveaway.command()
+    async def setup(self, ctx: commands.Context, giveaway_role: discord.Role) -> None:
+        """Setup giveaway role."""
+        setup_db = await EasySQL().connect(
+            host=os.environ.get("DB_HOST"),
+            database="setup",
+            user="giveaway_bot",
+            password=os.environ["DB_PASS"],
+        )
+        await setup_db.execute(
+            f"INSERT INTO setup(giveaway_role_id) VALUES({giveaway_role.id})"
+        )
+        await setup_db.close()
+        await ctx.send(
+            embed=discord.Embed(
+                title="Setup complete",
+                description=f"Giveaway role set to {giveaway_role.mention}",
+                color=discord.Color.green(),
+            )
+        )
+    
+    @giveaway.command()
+    async def wizard(self, ctx: commands.Context) -> None:
+        """A helper for setting up giveaways."""
+        await ctx.send(
+            embed=discord.Embed(
+                title="Giveaway Wizard",
+                description="This is a wizard for setting up giveaways.\n"
+                "You will be asked to provide the following information:\n"
+                "1. Title\n"
+                "2. Description\n"
+                "3. Prize\n"
+                "4. Channel (optional (say none or null for not answering))\n"
+                "5. Time\n"
+                "6. Condition (optional (say none or null for not answering))\n"
+            )
+        )
+        def check(m: discord.Message) -> bool:
+            return m.author == ctx.author and m.channel == ctx.channel
+        infos = ["title", "description", "prize", "channel", "time", "condition"]
+        data = {}
+        for info in infos:
+            await ctx.send(
+                embed=discord.Embed(
+                    title=f"Please provide {info} for giveaway",
+                    color=discord.Color.green(),
+                )
+            )
+            msg = await self.bot.wait_for("message", check=check)
+            data[info] = msg.content
+        if data["channel"].lower() in ("none", "null"):
+            data["channel"] = None
+        if data["condition"].lower() in ("none", "null"):
+            data["condition"] = None
+        await ctx.send(
+            embed=discord.Embed(
+                title="Giveaway setup",
+                description="Giveaway setup is complete.",
+                color=discord.Color.green(),
+            )
+        )
+        await self.create(
+            ctx,
+            title=data["title"],
+            description=data["description"],
+            prize=data["prize"],
+            channel=data["channel"],
+            time=data["time"],
+            condition=data["condition"],
+        )
+        
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(

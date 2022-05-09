@@ -1,4 +1,3 @@
-DROP TABLE IF EXISTS giveaways;
 CREATE TABLE IF NOT EXISTS giveaways(
     id BIGSERIAL,
     owner_id BIGINT NOT NULL,
@@ -14,4 +13,9 @@ CREATE TABLE IF NOT EXISTS giveaways(
     conditions TEXT,
     prize TEXT NOT NULL,
     PRIMARY KEY (id)
+);
+CREATE TABLE IF NOT EXISTS setup(
+    guild_id BIGSERIAL,
+    giveaway_role_id BIGINT,
+    PRIMARY KEY (guild_id)
 )
