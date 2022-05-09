@@ -77,7 +77,7 @@ class Giveaways(commands.Cog):
             return time
 
     @commands.hybrid_group()
-    async def giveaway(self, ctx: commands.Context) -> None:
+    async def giveaway(self, ctx: discord.Interaction) -> None:
         """Giveaway commands."""
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
@@ -106,7 +106,7 @@ class Giveaways(commands.Cog):
     @giveaway.command()
     async def create(
         self,
-        ctx: commands.Context,
+        ctx: discord.Interaction,
         title: str,
         description: str,
         time: str,
@@ -116,21 +116,32 @@ class Giveaways(commands.Cog):
         condition: typing.Optional[str] = None,
     ) -> None:
         """Create a giveaway."""
+        await ctx.defer()
         setup_db = await EasySQL().connect(
             host=os.environ.get("DB_HOST"),
-            database="setup",
+            database="giveaways",
             user="giveaway_bot",
             password=os.environ["DB_PASS"],
         )
         roles = ctx.author.roles
-        if (
-            not any(
-                r.id
-                == await setup_db.execute(
-                    f"SELECT * FROM setup WHERE guild_id = {ctx.guild.id}"
-                )["giveaway_role_id"]
-                for r in roles
+        role_id = await setup_db.fetch(
+            f"SELECT * FROM setup WHERE guild_id = {ctx.guild.id}"
+        )
+        if not role_id:
+            role_id = 0
+            await ctx.send(
+                embed=discord.Embed(
+                    title="Setup",
+                    description="Warning: No giveaway role has been set up yet.\n"
+                    "You can set it up with `g!giveaway setup`\n"
+                    "If you didn't setup the bot every giveaway creation will check if member has a adminstrator permission.",
+                    color=discord.Color.yellow(),
+                )
             )
+        else:
+            role_id = role_id[0]["giveaway_role_id"]
+        if (
+            int(role_id) not in [r.id for r in roles]
             or not ctx.author.guild_permissions.administrator
         ):
             raise commands.MissingPermissions(["NoGiveawayRoleError"])
@@ -159,12 +170,13 @@ class Giveaways(commands.Cog):
             description=description,
             color=discord.Color.blurple(),
         )
+        id = random_id()
         now = datetime.datetime.now()
         embed.add_field(name="Prize", value=prize)
         embed.add_field(name="Time", value=str(time))
         embed.add_field(name="Channel", value=channel.mention)
         embed.add_field(name="Condition", value=condition if condition else "None")
-        embed.add_field(name="ID", value=random_id())
+        embed.add_field(name="ID", value=id)
         embed.add_field(name="Created by", value=ctx.author.mention)
         embed.add_field(name="Created at", value=now.strftime("%d/%m/%Y %H:%M:%S"))
         embed.set_footer(text=f"Giveaway created by {ctx.author.name}")
@@ -175,8 +187,16 @@ class Giveaways(commands.Cog):
         await self.db.execute(
             f"""
             INSERT INTO giveaways (id, owner_id, guild_id, channel_id, message_id, title, description, started_at, duration, ended_at, winner_id, conditions, prize)
-            VALUES ({random_id(length=10)}, {ctx.author.id},{message.guild.id}, {message.channel.id},{message.id}, '{title}', '{description}', {now.timestamp()}, {time.total_seconds()}, '{(now + time).timestamp()}', NULL, {'NULL' if condition is None else f"'{condition}'"}, '{prize}')
+            VALUES ({id}, {ctx.author.id},{message.guild.id}, {message.channel.id},{message.id}, '{title}', '{description}', {now.timestamp()}, {time.total_seconds()}, '{(now + time).timestamp()}', NULL, {'NULL' if condition is None else f"'{condition}'"}, '{prize}')
             """
+        )
+        await ctx.send(
+            embed=discord.Embed(
+                title="Successfully!",
+                description="Everythings works perfectly fine!\n"
+                f"Your giveaway message is at {message.jump_url}",
+                color=discord.Color.green(),
+            )
         )
 
     @tasks.loop(seconds=1)
@@ -198,7 +218,8 @@ class Giveaways(commands.Cog):
             winner.remove(self.bot.user)
             winner = random.choice(winner)
             if winner is None:
-                continue
+                winner = dummy()
+                winner.mention = "No one"
             await message.edit(
                 content=f"{winner.mention} won the giveaway!",
                 embed=discord.Embed(
@@ -232,13 +253,17 @@ class Giveaways(commands.Cog):
             )
 
     @giveaway.command()
-    async def end(self, ctx: commands.Context, giveaway_id: str) -> None:
+    async def end(self, ctx: discord.Interaction, giveaway_id: str) -> None:
         """End a giveaway."""
+        await ctx.defer()
         giveaway = await self.db.fetch(
-            f"SELECT * FROM giveaways WHERE id = '{giveaway_id}'"
+            f"SELECT * FROM giveaways WHERE id = {giveaway_id}"
         )
         if not giveaway:
-            raise commands.BadArgument(f"No giveaway with ID {giveaway_id}.")
+            badarg = commands.BadArgument("No giveaway with this id.")
+            badarg.param = dummy()
+            badarg.param.name = "giveaway_id"
+            raise badarg
         giveaway = giveaway[0]
         channel = self.bot.get_channel(giveaway["channel_id"])
         if channel is None:
@@ -246,7 +271,7 @@ class Giveaways(commands.Cog):
         message = await channel.fetch_message(giveaway["message_id"])
         if message is None:
             raise commands.BadArgument(f"No message with ID {giveaway['message_id']}.")
-        winner = await message.reactions[0].users().flatten()
+        winner = [user async for user in message.reactions[0].users()]
         winner = random.choice(winner)
         if winner is None:
             raise commands.BadArgument("No winner.")
@@ -261,7 +286,8 @@ class Giveaways(commands.Cog):
             .add_field(name="Winner", value=winner.mention)
             .add_field(name="ID", value=giveaway["id"])
             .add_field(
-                name="Created by", value=self.bot.get_user(giveaway["guild_id"]).mention
+                name="Created by",
+                value=self.bot.get_user(int(giveaway["owner_id"])).mention,
             )
             .add_field(
                 name="Created at",
@@ -271,18 +297,21 @@ class Giveaways(commands.Cog):
             )
             .add_field(name="Ended at", value=now.strftime("%d/%m/%Y %H:%M:%S"))
             .set_footer(
-                text=f"Giveaway ended by {self.bot.get_user(giveaway['winner_id']).name}"
+                text=f"Giveaway ended by {self.bot.get_user(int(giveaway['winner_id'])).mention if giveaway['winner_id'] is not None else 'No one'}"
             )
         )
         await self.db.execute(
-            f"UPDATE giveaways SET ended_at = {now.timestamp()}, winner_id = {winner.id}, time = {(now-datetime.timedelta(seconds=giveaway['time'])).total_seconds()} WHERE id = {giveaway['id']}"
+            f"UPDATE giveaways SET ended_at = {now.timestamp()}, winner_id = {winner.id}, duration = {(now-datetime.datetime.fromtimestamp(int(giveaway['started_at']))).total_seconds()} WHERE id = {giveaway['id']}"
         )
 
     @giveaway.command()
     async def list_giveaway(
-        self, ctx: commands.Context, status: Status = "active"
+        self, ctx: discord.Interaction, status: Status = "active"
     ) -> None:
         """List giveaways."""
+        await ctx.defer()
+        if isinstance(status, Status):
+            status = status.value
         if status == "active":
             giveaways = await self.db.fetch(
                 f"SELECT * FROM giveaways WHERE ended_at > {datetime.datetime.now().timestamp()}"
@@ -335,6 +364,12 @@ class Giveaways(commands.Cog):
                     "%d/%m/%Y %H:%M:%S"
                 ),
             )
+            embed.add_field(
+                name="Winner",
+                value=self.bot.get_user(giveaway["winner_id"]).mention
+                if giveaway["winner_id"]
+                else "No winner yet.",
+            )
             embeds.append(embed)
         await ctx.send(embed=embed)
         if len(embeds) >= 10:  # discord limitation
@@ -345,13 +380,17 @@ class Giveaways(commands.Cog):
             await ctx.send(embeds=embeds)
 
     @giveaway.command()
-    async def info(self, ctx: commands.Context, giveaway_id: str) -> None:
+    async def info(self, ctx: discord.Interaction, giveaway_id: str) -> None:
         """Get info about a giveaway."""
+        await ctx.defer()
         giveaway = await self.db.fetch(
             f"SELECT * FROM giveaways WHERE id = '{giveaway_id}'"
         )
         if not giveaway:
-            raise commands.BadArgument(f"No giveaway with ID {giveaway_id}.")
+            badarg = commands.BadArgument(f"No giveaway with ID {giveaway_id}.")
+            badarg.param = dummy()
+            badarg.param.name = "giveaway_id"
+            raise badarg
         giveaway = giveaway[0]
         channel = self.bot.get_channel(giveaway["channel_id"])
         if channel is None:
@@ -392,16 +431,20 @@ class Giveaways(commands.Cog):
         await ctx.send(embed=embed)
 
     @giveaway.command()
-    async def setup(self, ctx: commands.Context, giveaway_role: discord.Role) -> None:
+    @commands.has_permissions(administrator=True)
+    async def setup(
+        self, ctx: discord.Interaction, giveaway_role: discord.Role
+    ) -> None:
         """Setup giveaway role."""
+        await ctx.defer()
         setup_db = await EasySQL().connect(
             host=os.environ.get("DB_HOST"),
-            database="setup",
+            database="giveaways",
             user="giveaway_bot",
             password=os.environ["DB_PASS"],
         )
         await setup_db.execute(
-            f"INSERT INTO setup(giveaway_role_id) VALUES({giveaway_role.id})"
+            f"INSERT INTO setup(guild_id, giveaway_role_id) VALUES({ctx.guild.id}, {giveaway_role.id})"
         )
         await setup_db.close()
         await ctx.send(
@@ -413,8 +456,9 @@ class Giveaways(commands.Cog):
         )
 
     @giveaway.command()
-    async def wizard(self, ctx: commands.Context) -> None:
+    async def wizard(self, ctx: discord.Interaction) -> None:
         """A helper for setting up giveaways."""
+        await ctx.defer()
         await ctx.send(
             embed=discord.Embed(
                 title="Giveaway Wizard",
@@ -511,8 +555,11 @@ class Giveaways(commands.Cog):
             winner.remove(self.bot.user)
             winner = random.choice(winner)
             if winner is None:
-                return
+                winner = dummy()
+                winner.mention = "No one"
+            owner = await self.bot.fetch_user(giveaway["owner_id"])
             await message.edit(
+                content=f"{winner.mention} won the giveaway!",
                 embed=discord.Embed(
                     title=giveaway["title"],
                     description=giveaway["description"],
@@ -521,9 +568,9 @@ class Giveaways(commands.Cog):
                 .add_field(name="Prize", value=giveaway["prize"])
                 .add_field(name="Winner", value=winner.mention)
                 .add_field(name="ID", value=giveaway["id"])
-                .add_field(name="Created by", value=message.author.mention)
+                .add_field(name="Created by", value=owner.mention)
                 .add_field(name="Created at", value=giveaway["started_at"])
-                .set_footer(text=f"Giveaway ended by {message.author.name}")
+                .set_footer(text=f"Giveaway ended by {message.author.name}"),
             )
 
             await self.db.execute(
