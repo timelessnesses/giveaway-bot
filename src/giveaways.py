@@ -12,6 +12,14 @@ from .utils.stuffs import random_id, dummy
 
 
 class Giveaways(commands.Cog):
+    """
+    A giveaway commands group!
+    """
+
+    @property
+    def display_emoji(self) -> str:
+        return "🎉"
+
     def __init__(self, bot) -> None:
         self.bot = bot
         self.db = self.bot.db
@@ -61,7 +69,7 @@ class Giveaways(commands.Cog):
                 raise badarg
             return time
 
-    @commands.group()
+    @commands.hybrid_group()
     async def giveaway(self, ctx: commands.Context) -> None:
         """Giveaway commands."""
         if ctx.invoked_subcommand is None:
@@ -396,7 +404,7 @@ class Giveaways(commands.Cog):
                 color=discord.Color.green(),
             )
         )
-    
+
     @giveaway.command()
     async def wizard(self, ctx: commands.Context) -> None:
         """A helper for setting up giveaways."""
@@ -410,11 +418,13 @@ class Giveaways(commands.Cog):
                 "3. Prize\n"
                 "4. Channel (optional (say none or null for not answering))\n"
                 "5. Time\n"
-                "6. Condition (optional (say none or null for not answering))\n"
+                "6. Condition (optional (say none or null for not answering))\n",
             )
         )
+
         def check(m: discord.Message) -> bool:
             return m.author == ctx.author and m.channel == ctx.channel
+
         infos = ["title", "description", "prize", "channel", "time", "condition"]
         data = {}
         for info in infos:
@@ -446,7 +456,6 @@ class Giveaways(commands.Cog):
             time=data["time"],
             condition=data["condition"],
         )
-        
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(

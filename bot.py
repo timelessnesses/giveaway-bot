@@ -53,6 +53,7 @@ observer.schedule(FileHandler(), path="src", recursive=True)
 @bot.event
 async def on_ready():
     log.info("Logged in as %s", bot.user.name)
+    await bot.tree.sync()
 
 
 async def main():
