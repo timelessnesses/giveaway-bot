@@ -11,7 +11,7 @@ try:
     uvloop.install()
     log.info("Installed uvloop now enjoy the fastness!")
 except (ImportError, ModuleNotFoundError):
-    log.info("uvloop not installed, falling back to asyncio")
+    log.fatal("uvloop not installed, falling back to asyncio")
     pass
 
 from asyncio import run
