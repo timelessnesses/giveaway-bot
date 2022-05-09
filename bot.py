@@ -23,6 +23,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+import subprocess
 
 load_dotenv()
 import os
@@ -58,6 +59,31 @@ async def on_ready():
     await bot.tree.sync()
 
 
+def get_git_revision_short_hash() -> str:
+    return (
+        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+        .decode("ascii")
+        .strip()
+    )
+
+
+def get_version():
+    is_updated = (
+        subprocess.run(["git", "status", "-uno"], stdout=subprocess.PIPE)
+        .stdout.decode("ascii")
+        .strip()
+    )
+    if "up to date" in is_updated:
+        is_updated = True
+    else:
+        is_updated = False
+
+    if is_updated:
+        bot.version_ = f"latest ({get_git_revision_short_hash()})"
+    else:
+        bot.version_ = f"old ({get_git_revision_short_hash()}) - not up to date"
+
+
 async def main():
     async with bot:
         bot.db = await EasySQL().connect(
@@ -66,14 +92,17 @@ async def main():
             user="giveaway_bot",
             password=os.environ["DB_PASS"],
         )
+        log.info("Connected to database")
         for cog in os.listdir("src"):
             if cog.endswith(".py"):
                 await bot.load_extension(f"src.{cog[:-3]}")
         await bot.load_extension("jishaku")
-        log.info("Connected to database")
+        log.info("Loaded all extensions")
         await bot.db.execute(open("sql/postgres_starter.sql", "r").read())
         log.info("Loaded starter SQL")
         observer.start()
+        log.info("Started file watcher")
+        get_version()
         await bot.start(os.environ["DISCORD_TOKEN"])
 
 
