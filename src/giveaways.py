@@ -1,14 +1,21 @@
 import datetime
+import enum
 import logging
+import os
 import random
 import typing
-import os
+
 import discord
 from discord.ext import commands, tasks
 
 from sql.easy_sql import EasySQL
 
-from .utils.stuffs import random_id, dummy
+from .utils.stuffs import dummy, random_id
+
+
+class Status(enum.Enum):
+    active = "active"
+    ended = "ended"
 
 
 class Giveaways(commands.Cog):
@@ -102,7 +109,7 @@ class Giveaways(commands.Cog):
         ctx: commands.Context,
         title: str,
         description: str,
-        time: typing.Union[int, str],
+        time: str,
         prize: str,
         channel: typing.Optional[discord.TextChannel] = None,
         *,
@@ -272,8 +279,8 @@ class Giveaways(commands.Cog):
         )
 
     @giveaway.command()
-    async def list(
-        self, ctx: commands.Context, status: typing.Union["active", "ended"] = "active"
+    async def list_giveaway(
+        self, ctx: commands.Context, status: Status = "active"
     ) -> None:
         """List giveaways."""
         if status == "active":

@@ -15,13 +15,14 @@ except (ImportError, ModuleNotFoundError):
     pass
 
 from asyncio import run
+from datetime import datetime
 
 import asyncpg
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 load_dotenv()
 import os
@@ -30,6 +31,7 @@ from sql.easy_sql import EasySQL
 
 bot = commands.Bot(command_prefix="g!", intents=discord.Intents.all())
 bot.db = None
+bot.start_time = datetime.utcnow()
 bot.remove_command("help")
 observer = Observer()
 
@@ -47,7 +49,7 @@ class FileHandler(FileSystemEventHandler):
                 log.error(f"Failed to reload {path}")
 
 
-observer.schedule(FileHandler(), path="src", recursive=True)
+observer.schedule(FileHandler(), path="src", recursive=False)
 
 
 @bot.event
