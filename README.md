@@ -21,7 +21,7 @@ A free/open-source/easy/verbosive giveaway bot for discord.
 
 ## How to setup
 
-REMINDER: You need to have a postgresql database running and you need poetry installed.
+REMINDER: You need to have a postgresql database running and you need poetry installed. Also you need to use git to clone this repository only downloading the zip file will likely break the version checking since it use git to check it commit is out of dated or updated.
 
 1. Install poetry
 
