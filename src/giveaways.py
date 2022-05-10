@@ -656,14 +656,6 @@ class Giveaways(commands.Cog):
                 f"UPDATE giveaways SET winner_id = '{winner.id}' WHERE id = '{giveaway['id']}'"
             )
 
-    @giveaway.command()
-    async def modal(self, ctx: discord.Interaction) -> None:
-        """
-        BETA: Using modal for easier giveaway creation
-        """
-        await ctx.defer()
-        await ctx.interaction.send_modal(giveaway_info())
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Giveaways(bot))
