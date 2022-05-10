@@ -48,6 +48,7 @@ class FileHandler(FileSystemEventHandler):
                 log.info(f"Reloaded {path}")
             except Exception as e:
                 log.error(f"Failed to reload {path}")
+                log.error(e)
 
 
 observer.schedule(FileHandler(), path="src", recursive=False)

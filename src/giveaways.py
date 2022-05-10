@@ -7,10 +7,11 @@ import typing
 
 import discord
 from discord.ext import commands, tasks
+import string
 
 from sql.easy_sql import EasySQL
 
-from .utils.stuffs import dummy, random_id
+from .utils.stuffs import dummy, random_id, giveaway_info
 
 
 class Status(enum.Enum):
@@ -34,8 +35,11 @@ class Giveaways(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        self.log.info("Checking old giveaways")
+        await self.old_giveaway()
         self.log.info("Starting giveaway task loop")
         self.check_giveaways.start()
+        self.log.info("Tasks started")
 
     def parse_time(
         self, time: typing.Union[datetime.timedelta, int, str]
@@ -45,6 +49,22 @@ class Giveaways(commands.Cog):
         elif isinstance(time, int):
             return datetime.timedelta(seconds=time)
         else:
+            if not time.strip(string.ascii_letters).isdigit():
+                # likely format error
+                badarg = commands.BadArgument(
+                    f"{time} is not a valid time.\n"
+                    "Valid time formats are:\n"
+                    "  - `1s` for 1 seconds\n"
+                    "  - `1m` for 1 minutes\n"
+                    "  - `1h` for 1 hour\n"
+                    "  - `1d` for 1 day\n"
+                    "  - `1w` for 1 week\n"
+                    "  - `1mo` for 1 month\n"
+                    "  - `1y` for 1 year"
+                )
+                badarg.param = dummy()
+                badarg.param.name = "time"
+                raise badarg
             if time.endswith("s"):
                 time = datetime.timedelta(seconds=int(time[:-1]))
             elif time.endswith("m"):
@@ -63,13 +83,13 @@ class Giveaways(commands.Cog):
                 badarg = commands.BadArgument(
                     f"{time} is not a valid time.\n"
                     "Valid time formats are:\n"
-                    "  - `1s`\n"
-                    "  - `1m`\n"
-                    "  - `1h`\n"
-                    "  - `1d`\n"
-                    "  - `1w`\n"
-                    "  - `1mo`\n"
-                    "  - `1y`\n"
+                    "  - `1s` for 1 seconds\n"
+                    "  - `1m` for 1 minutes\n"
+                    "  - `1h` for 1 hour\n"
+                    "  - `1d` for 1 day\n"
+                    "  - `1w` for 1 week\n"
+                    "  - `1mo` for 1 month\n"
+                    "  - `1y` for 1 year"
                 )
                 badarg.param = dummy()
                 badarg.param.name = "time"
@@ -252,6 +272,59 @@ class Giveaways(commands.Cog):
                 f"UPDATE giveaways SET ended_at = {now.timestamp()}, winner_id = {winner.id} WHERE id = {giveaway['id']}"
             )
 
+    async def old_giveaway(self) -> None:
+        """Check entire giveaway see if it expired if it is then forcing the winner."""
+        await self.bot.wait_until_ready()
+        now = datetime.datetime.now()
+        giveaways = await self.db.fetch(
+            f"SELECT * FROM giveaways WHERE ended_at < {now.timestamp()} AND winner_id IS NULL"
+        )
+        for giveaway in giveaways:
+            channel = self.bot.get_channel(giveaway["channel_id"])
+            if channel is None:
+                continue
+            message = await channel.fetch_message(giveaway["message_id"])
+            if message is None:
+                continue
+            winner = [member async for member in message.reactions[0].users()]
+            winner.remove(self.bot.user)
+            winner = random.choice(winner)
+            if winner is None:
+                winner = dummy()
+                winner.mention = "No one"
+                winner.id = None
+            await message.edit(
+                content=f"{winner.mention} won the giveaway!",
+                embed=discord.Embed(
+                    title=giveaway["title"],
+                    description=giveaway["description"],
+                    color=discord.Color.blurple(),
+                )
+                .add_field(name="Prize", value=giveaway["prize"])
+                .add_field(name="Winner", value=winner.mention)
+                .add_field(name="ID", value=giveaway["id"])
+                .add_field(
+                    name="Created by",
+                    value=self.bot.get_user(int(giveaway["owner_id"])).mention,
+                )
+                .add_field(
+                    name="Created at",
+                    value=datetime.datetime.fromtimestamp(
+                        giveaway["started_at"]
+                    ).strftime("%d/%m/%Y %H:%M:%S"),
+                )
+                .add_field(
+                    name="Ended at",
+                    value=datetime.datetime.fromtimestamp(
+                        giveaway["ended_at"]
+                    ).strftime("%d/%m/%Y %H:%M:%S"),
+                )
+                .set_footer(text=f"Giveaway ended by {winner.mention}"),
+            )
+            await self.db.execute(
+                f"UPDATE giveaways SET ended_at = {now.timestamp()}, winner_id = {winner.id} WHERE id = {giveaway['id']}"
+            )
+
     @giveaway.command()
     async def end(self, ctx: discord.Interaction, giveaway_id: str) -> None:
         """End a giveaway."""
@@ -274,7 +347,9 @@ class Giveaways(commands.Cog):
         winner = [user async for user in message.reactions[0].users()]
         winner = random.choice(winner)
         if winner is None:
-            raise commands.BadArgument("No winner.")
+            winner = dummy()
+            winner.mention = "No one"
+            winner.id = None
         now = datetime.datetime.now()
         await message.edit(
             embed=discord.Embed(
@@ -296,12 +371,16 @@ class Giveaways(commands.Cog):
                 ),
             )
             .add_field(name="Ended at", value=now.strftime("%d/%m/%Y %H:%M:%S"))
-            .set_footer(
-                text=f"Giveaway ended by {self.bot.get_user(int(giveaway['winner_id'])).mention if giveaway['winner_id'] is not None else 'No one'}"
-            )
+            .set_footer(text=f"Giveaway ended by {winner.mention}")
         )
         await self.db.execute(
             f"UPDATE giveaways SET ended_at = {now.timestamp()}, winner_id = {winner.id}, duration = {(now-datetime.datetime.fromtimestamp(int(giveaway['started_at']))).total_seconds()} WHERE id = {giveaway['id']}"
+        )
+        await ctx.send(
+            embed=discord.Embed(
+                title="Giveaway ended!",
+                description=f"Forcefully ended giveaway with a ID of {giveaway['id']} and the winner is {winner.mention}.",
+            )
         )
 
     @giveaway.command()
@@ -576,6 +655,14 @@ class Giveaways(commands.Cog):
             await self.db.execute(
                 f"UPDATE giveaways SET winner_id = '{winner.id}' WHERE id = '{giveaway['id']}'"
             )
+
+    @giveaway.command()
+    async def modal(self, ctx: discord.Interaction) -> None:
+        """
+        BETA: Using modal for easier giveaway creation
+        """
+        await ctx.defer()
+        await ctx.interaction.send_modal(giveaway_info())
 
 
 async def setup(bot: commands.Bot) -> None:
