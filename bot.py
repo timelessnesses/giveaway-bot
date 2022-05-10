@@ -12,13 +12,11 @@ try:
     log.info("Installed uvloop now enjoy the fastness!")
 except (ImportError, ModuleNotFoundError):
     log.fatal("uvloop not installed, falling back to asyncio")
-    pass
 
 import subprocess
 from asyncio import run
 from datetime import datetime
 
-import asyncpg
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv

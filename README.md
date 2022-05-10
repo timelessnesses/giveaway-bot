@@ -41,6 +41,7 @@ poetry install
 DB_HOST=postgresql database hostname (ip address or hostname)
 DB_PASS=postgresql database password
 DISCORD_TOKEN=discord bot token
+COG_TYPE=compile or normal (compile is faster but comes with huge binary size)
 ```  
 
 4. Setup [postgresql database](#postgresql-setup)

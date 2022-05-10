@@ -11,7 +11,7 @@ from discord.ext import commands, tasks
 
 from sql.easy_sql import EasySQL
 
-from .utils.stuffs import dummy, giveaway_info, random_id
+from .utils.stuffs import dummy, random_id
 
 
 class Status(enum.Enum):

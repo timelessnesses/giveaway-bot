@@ -1,8 +1,6 @@
 import random
 import string
 
-import discord
-
 
 def random_id(length: int = 10) -> str:
     """Generate a random string."""

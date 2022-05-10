@@ -1,5 +1,4 @@
 import platform
-import sys
 from datetime import datetime
 
 import discord
