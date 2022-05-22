@@ -41,6 +41,7 @@ poetry install
 DB_HOST=postgresql database hostname (ip address or hostname)
 DB_PASS=postgresql database password
 DISCORD_TOKEN=discord bot token
+JISHAKU_HIDE=1 # hide jishaku
 ```  
 
 4. Setup [postgresql database](#postgresql-setup)
