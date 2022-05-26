@@ -16,7 +16,7 @@ A free/open-source/easy/verbosive giveaway bot for discord.
 - [x] Embed
 - [x] Condition
 - [ ] Conditions
-- [ ] Get giveaway info
+- [x] Get giveaway info
 - [ ] Stable
 
 ## How to setup
